@@ -1,36 +1,68 @@
-#!/usr/bin/python3
-#*********************Python module file header******************************
-__doc__ = """ Script Python che gira su PC o RaspberryPi.
--Rimane in attesa sulla porta seriale di un comando trasmesso da Arduino in base allo stato
-della macchina conta accessi:
-(es. comandi di un carattere)
-i= ingresso avvenuto
-u=uscita avvenuta
-b=barriera bloccata
-? altri comandi utili
+#!/usr/bin/env  python
+# coding=utf-8
+import serial,time
+#import make_html
 
--Trasmette comandi  alla macchina conta accessi su Arduino:
-(es. comandi di un carattere)
-r=reset contatori accessi
-g=get contatore Accessi
-? altri comandi utili
+# file per ilsalvataggio degli accessi
+log_file_name='accessi.log'
 
--Mostra su monitor i dati relativi agli accessi
--Pubblica su pagina WEB i dati relativi agli accessi
+# apro porta seriale per comunicazione con Arduino
+ser = serial.Serial('/dev/pts/9', 115200, timeout=1)
 
-"""
+rx_buffer=" "
+rx_data=[0, 0]
+status="OK"
+ingressi=0
+uscite=0
+timestamp=""
+ser.flushInput()
+ser.flushOutput()
 
 
-__author__ = "Inserire Autore"
-__copyright__ = """Inserire nota copyright"""
-__license__ = "GPL"
-__email__ = ""
-__status__ = "Development[X] | Test[] | Production[]"
+# ricarico i valori dei contatori dal file di log. Il formato del file è: [timestamp] [Ingressi] [Uscite]
+with open(log_file_name,"a+") as logfile:
+    for line in logfile:
+        if(line.strip()):
+                try:
+                    rx_data=line.split()
+                    ingressi+=int(rx_data[1])
+                    uscite+=int(rx_data[2])
+                except:
+                    status="log file error"
 
-#History: (repeat the following line as many times as applicable)
-__version__ = "0.1.1 original"
-#******************************************************************************
 
 
-print ("Gulli Controllo Accessi 1.0 !\n" )
-print (__doc__)
+# trasmetto comando CNT su seriale
+ser.write('CNT')
+# ricevo da seriale
+rx_buffer=ser.readline()
+if(rx_buffer.find("\n")>=0): # se ho ricevuto senza timeout
+    try:
+    #estraggo i valori  dalla stringa ricevuta ed aggiorno i contatori Ingressi/Uscite
+        print("found !")
+        rx_data=rx_buffer.split()
+        ingressi+=int(rx_data[0])
+        uscite+=int(rx_data[1])
+        # trasmetto  ACK su seriale
+        ser.write('ACK')
+    except:
+        status="comm. error"
+        
+
+    # aggiorno il file di log se necessario
+    if(rx_data[0]!=0 or rx_data[1]!=0):
+    # aggiungo timestamp al file
+        timestamp=time.strftime("%H:%M:%S-%d/%m/%Y ",time.localtime())
+        rx_buffer=timestamp + rx_buffer
+        with open(log_file_name,"a+") as logfile:
+            logfile.write(rx_buffer +"\n")
+
+else:
+    status="comm. error"
+
+# creo file html per Display Controllo Accessi
+#make_html.MakeHTML(ingressi,uscite,status)
+print("Ingressi= " + str(ingressi)+"\n")
+print("Uscite= " + str(uscite) + "\n")
+print("Status= " +  str(status) + "\n")
+ser.close()
